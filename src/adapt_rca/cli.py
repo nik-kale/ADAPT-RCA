@@ -21,28 +21,29 @@ from .reporting.exporters import export_json, export_markdown, export_graph_merm
 from .utils import validate_input_path, validate_output_path, PathValidationError
 from .models import Event, IncidentGroup
 from .graph.causal_graph import CausalGraph
+from .logging_config import setup_logging, get_logger
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
+# Logging will be configured by CLI based on verbosity flags
+logger = get_logger(__name__)
 
 
-def setup_logging(verbose: bool = False, quiet: bool = False, debug: bool = False) -> None:
+def configure_cli_logging(verbose: bool = False, quiet: bool = False, debug: bool = False) -> None:
     """Configure logging level based on verbosity flags."""
+    from .logging_config import setup_logging as setup_centralized_logging
+
     if debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug("Debug logging enabled")
+        level = 'DEBUG'
     elif quiet:
-        logging.getLogger().setLevel(logging.ERROR)
+        level = 'ERROR'
     elif verbose:
-        logging.getLogger().setLevel(logging.INFO)
-        logger.info("Verbose logging enabled")
+        level = 'INFO'
     else:
-        logging.getLogger().setLevel(logging.WARNING)
+        level = 'WARNING'
+
+    setup_centralized_logging(
+        level=level,
+        include_timestamp=debug or verbose  # Show timestamps in verbose/debug mode
+    )
 
 
 def load_events_from_file(
@@ -754,7 +755,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Setup logging based on global flags
-    setup_logging(
+    configure_cli_logging(
         verbose=args.verbose,
         quiet=args.quiet,
         debug=args.debug
