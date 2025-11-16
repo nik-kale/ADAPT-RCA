@@ -4,9 +4,38 @@ Data models for ADAPT-RCA using Pydantic for validation.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from enum import Enum
+from functools import lru_cache
 
 from pydantic import BaseModel, Field, field_validator
 from dateutil import parser as date_parser
+
+
+# LRU cache for timestamp parsing to improve performance
+# Common timestamp formats are parsed once and cached
+@lru_cache(maxsize=1024)
+def _parse_timestamp_cached(timestamp_str: str) -> Optional[datetime]:
+    """
+    Parse timestamp string with LRU caching for performance.
+
+    Many log files contain repeated timestamp formats. By caching
+    the parsing results, we can significantly improve performance
+    when processing large log files with consistent timestamp formats.
+
+    Args:
+        timestamp_str: ISO 8601 or other timestamp string format.
+
+    Returns:
+        Parsed datetime object or None if parsing fails.
+
+    Note:
+        Cache size is 1024 which covers most use cases. For logs with
+        microsecond-precision timestamps, each unique timestamp is cached.
+        For logs with second-precision, cache hit rate is very high.
+    """
+    try:
+        return date_parser.parse(timestamp_str)
+    except (ValueError, TypeError):
+        return None
 
 
 class LogLevel(str, Enum):
@@ -42,22 +71,51 @@ class Event(BaseModel):
     @field_validator('timestamp', mode='before')
     @classmethod
     def parse_timestamp(cls, v: Any) -> Optional[datetime]:
-        """Parse timestamp from various formats."""
+        """Parse timestamp from various formats with caching.
+
+        Handles ISO 8601 strings, datetime objects, and returns None for
+        invalid formats. Uses cached parsing for improved performance when
+        processing large log files with repeated timestamp formats.
+
+        Args:
+            v: Timestamp value (string, datetime, or None).
+
+        Returns:
+            Parsed datetime object or None if parsing fails.
+
+        Example:
+            >>> Event(timestamp="2024-01-01T10:00:00Z")
+            >>> Event(timestamp=datetime.now())
+            >>> Event(timestamp=None)
+        """
         if v is None:
             return None
         if isinstance(v, datetime):
             return v
         if isinstance(v, str):
-            try:
-                return date_parser.parse(v)
-            except (ValueError, TypeError):
-                return None
+            # Use cached parsing for performance
+            return _parse_timestamp_cached(v)
         return None
 
     @field_validator('level')
     @classmethod
     def normalize_level(cls, v: Optional[str]) -> Optional[str]:
-        """Normalize log level to uppercase."""
+        """Normalize log level to uppercase.
+
+        Ensures consistent log level representation by converting to uppercase.
+
+        Args:
+            v: Log level string (can be None).
+
+        Returns:
+            Uppercase log level string or None.
+
+        Example:
+            >>> Event(level="error").level
+            'ERROR'
+            >>> Event(level="Info").level
+            'INFO'
+        """
         if v is None:
             return None
         return v.upper()
@@ -87,7 +145,23 @@ class IncidentGroup(BaseModel):
 
     @classmethod
     def from_events(cls, events: List[Event]) -> 'IncidentGroup':
-        """Create incident group from list of events."""
+        """Create incident group from list of events.
+
+        Aggregates events into a group, calculating time range, affected services,
+        and determining the highest severity level present.
+
+        Args:
+            events: List of Event objects to group together.
+
+        Returns:
+            IncidentGroup with aggregated information.
+
+        Example:
+            >>> events = [Event(...), Event(...)]
+            >>> group = IncidentGroup.from_events(events)
+            >>> print(f"Services: {group.services}")
+            >>> print(f"Severity: {group.severity}")
+        """
         if not events:
             return cls()
 
@@ -170,11 +244,27 @@ class AnalysisResult(BaseModel):
         }
 
     def to_legacy_dict(self) -> Dict[str, Any]:
-        """
-        Convert to legacy dictionary format for backward compatibility.
+        """Convert to legacy dictionary format for backward compatibility.
+
+        Extracts simple string representations from the structured RootCause
+        and RecommendedAction objects for use with older code expecting
+        simple string lists.
 
         Returns:
-            Dictionary with legacy structure
+            Dictionary with legacy structure containing:
+                - incident_summary (str)
+                - probable_root_causes (List[str])
+                - recommended_actions (List[str])
+
+        Example:
+            >>> result = AnalysisResult(
+            ...     incident_summary="Database failure",
+            ...     probable_root_causes=[RootCause(description="Timeout")],
+            ...     recommended_actions=[RecommendedAction(description="Restart")]
+            ... )
+            >>> legacy = result.to_legacy_dict()
+            >>> legacy["probable_root_causes"]
+            ['Timeout']
         """
         return {
             "incident_summary": self.incident_summary,

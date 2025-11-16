@@ -4,11 +4,15 @@ Simple web dashboard for ADAPT-RCA.
 import logging
 import os
 import re
+import secrets
 from pathlib import Path
 from typing import Optional
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 from ..constants import WEB_UPLOAD_MAX_SIZE_MB, WEB_ALLOWED_EXTENSIONS
 from ..utils import PathValidationError
+from ..security import sanitize_for_logging, sanitize_api_error
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +110,138 @@ def validate_upload(file, max_size_mb: int = WEB_UPLOAD_MAX_SIZE_MB) -> None:
     logger.debug(f"Upload validation passed: {safe_filename} ({size_bytes} bytes)")
 
 
+# Simple in-memory rate limiter
+class RateLimiter:
+    """Simple in-memory rate limiter for API endpoints."""
+
+    def __init__(self, max_requests: int = 10, window_seconds: int = 60):
+        """
+        Initialize rate limiter.
+
+        Args:
+            max_requests: Maximum requests allowed per window
+            window_seconds: Time window in seconds
+        """
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests = defaultdict(list)
+
+    def is_allowed(self, client_id: str) -> bool:
+        """
+        Check if request from client is allowed.
+
+        Args:
+            client_id: Unique identifier for client (e.g., IP address)
+
+        Returns:
+            True if request is allowed, False if rate limited
+        """
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=self.window_seconds)
+
+        # Remove old requests
+        self.requests[client_id] = [
+            req_time for req_time in self.requests[client_id]
+            if req_time > cutoff
+        ]
+
+        # Check if under limit
+        if len(self.requests[client_id]) >= self.max_requests:
+            return False
+
+        # Record this request
+        self.requests[client_id].append(now)
+        return True
+
+
+# Global rate limiter instance
+rate_limiter = RateLimiter(max_requests=10, window_seconds=60)
+
+
+def _determine_log_format(filename: str, format_param: str) -> tuple[str, str]:
+    """
+    Determine log format and file extension.
+
+    Args:
+        filename: Original filename
+        format_param: Format parameter from request ('auto', 'jsonl', etc.)
+
+    Returns:
+        Tuple of (log_format, file_extension)
+    """
+    from pathlib import Path
+    ext = Path(filename).suffix
+    log_format = format_param
+
+    if format_param == 'auto':
+        # Auto-detect based on extension
+        if filename.endswith('.jsonl'):
+            log_format = 'jsonl'
+        elif filename.endswith('.csv'):
+            log_format = 'csv'
+        else:
+            log_format = 'generic'
+
+    return log_format, ext
+
+
+def _load_events_from_file(file_path: Path, log_format: str, filename: str):
+    """
+    Load events from file based on format.
+
+    Args:
+        file_path: Path to the temporary file
+        log_format: Log format ('jsonl', 'csv', 'syslog', etc.)
+        filename: Original filename for format detection
+
+    Returns:
+        List of raw events
+
+    Raises:
+        ValueError: If log format is unsupported or loading fails
+    """
+    try:
+        if log_format == 'jsonl' or (log_format == 'auto' and filename.endswith('.jsonl')):
+            from ..ingestion.file_loader import load_jsonl
+            return list(load_jsonl(file_path))
+        elif log_format == 'csv' or (log_format == 'auto' and filename.endswith('.csv')):
+            from ..ingestion.csv_loader import load_csv
+            return list(load_csv(file_path))
+        else:
+            from ..ingestion.text_loader import load_text_log
+            return list(load_text_log(file_path, log_format=log_format))
+    except Exception as e:
+        raise ValueError(f"Failed to load events from file: {e}") from e
+
+
+def _process_and_analyze(raw_events: list) -> dict:
+    """
+    Process raw events and perform root cause analysis.
+
+    Args:
+        raw_events: List of raw event dictionaries
+
+    Returns:
+        Analysis result dictionary
+
+    Raises:
+        ValueError: If analysis fails
+    """
+    from ..parsing.log_parser import normalize_event
+    from ..reasoning.agent import analyze_incident
+
+    if not raw_events:
+        raise ValueError("No events found in file")
+
+    # Normalize events
+    events = [normalize_event(e) for e in raw_events]
+
+    # Perform analysis
+    result = analyze_incident(events)
+
+    return result
+
+
 def create_app(debug: bool = False):
     """
     Create Flask application for ADAPT-RCA dashboard.
@@ -129,6 +265,20 @@ def create_app(debug: bool = False):
     app = Flask(__name__)
     app.config['DEBUG'] = debug
     app.config['MAX_CONTENT_LENGTH'] = WEB_UPLOAD_MAX_SIZE_MB * 1024 * 1024  # Max upload size
+
+    # Security configuration
+    app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
+
+    # Security headers
+    @app.after_request
+    def add_security_headers(response):
+        """Add security headers to all responses."""
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'"
+        return response
 
     # HTML template
     INDEX_TEMPLATE = """
@@ -297,7 +447,17 @@ def create_app(debug: bool = False):
     @app.route('/analyze', methods=['POST'])
     def analyze():
         """Analyze uploaded log file."""
+        # Rate limiting
+        client_id = request.remote_addr or 'unknown'
+        if not rate_limiter.is_allowed(client_id):
+            logger.warning(f"Rate limit exceeded for client: {sanitize_for_logging(client_id)}")
+            return jsonify({
+                'error': 'Rate limit exceeded. Please try again later.',
+                'retry_after': 60
+            }), 429
+
         try:
+            # Validate file upload
             if 'file' not in request.files:
                 return jsonify({'error': 'No file uploaded'}), 400
 
@@ -311,47 +471,43 @@ def create_app(debug: bool = False):
             except ValueError as e:
                 return jsonify({'error': f'Upload validation failed: {e}'}), 400
 
-            # Sanitize filename
+            # Sanitize filename and determine format
             safe_filename = sanitize_filename(file.filename)
-            ext = Path(safe_filename).suffix
-
             log_format = request.form.get('format', 'auto')
+            _, ext = _determine_log_format(safe_filename, log_format)
 
-            # Save uploaded file temporarily with sanitized name
+            # Save uploaded file temporarily
             import tempfile
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext, prefix='adapt_rca_') as tmp:
-                # Save with size limit check
-                file.save(tmp.name)
-                tmp_path = Path(tmp.name)
-
+            tmp_path = None
             try:
-                # Determine loader based on format
-                if log_format == 'jsonl' or (log_format == 'auto' and file.filename.endswith('.jsonl')):
-                    from ..ingestion.file_loader import load_jsonl
-                    raw_events = list(load_jsonl(tmp_path))
-                elif log_format == 'csv' or (log_format == 'auto' and file.filename.endswith('.csv')):
-                    from ..ingestion.csv_loader import load_csv
-                    raw_events = list(load_csv(tmp_path))
-                else:
-                    from ..ingestion.text_loader import load_text_log
-                    raw_events = list(load_text_log(tmp_path, log_format=log_format))
+                with tempfile.NamedTemporaryFile(delete=False, suffix=ext, prefix='adapt_rca_') as tmp:
+                    file.save(tmp.name)
+                    tmp_path = Path(tmp.name)
 
-                # Analyze
-                from ..parsing.log_parser import normalize_event
-                from ..reasoning.agent import analyze_incident
+                # Load events from file
+                raw_events = _load_events_from_file(tmp_path, log_format, file.filename)
 
-                events = [normalize_event(e) for e in raw_events]
-                result = analyze_incident(events)
+                # Process and analyze
+                result = _process_and_analyze(raw_events)
 
                 return jsonify(result)
 
             finally:
                 # Clean up temp file
-                tmp_path.unlink(missing_ok=True)
+                if tmp_path:
+                    tmp_path.unlink(missing_ok=True)
+
+        except ValueError as e:
+            # Client errors (400)
+            sanitized_error = sanitize_api_error(e)
+            logger.warning(f"Client error: {sanitize_for_logging(str(e))}")
+            return jsonify({'error': sanitized_error}), 400
 
         except Exception as e:
-            logger.error(f"Analysis error: {e}", exc_info=True)
-            return jsonify({'error': str(e)}), 500
+            # Server errors (500)
+            sanitized_error = sanitize_api_error(e)
+            logger.error(f"Analysis error: {sanitize_for_logging(str(e))}", exc_info=True)
+            return jsonify({'error': sanitized_error}), 500
 
     @app.route('/health')
     def health():

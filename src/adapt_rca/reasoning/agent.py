@@ -1,3 +1,31 @@
+"""Heuristic-based incident analysis agent.
+
+This module provides the core analysis engine for ADAPT-RCA that uses
+heuristic methods to identify root causes and generate recommendations.
+It builds causal graphs, analyzes error patterns, and produces structured
+analysis results.
+
+Functions:
+    analyze_incident: Legacy interface for analyzing event dictionaries.
+    analyze_incident_group: Main analysis function for IncidentGroup objects.
+
+Private Functions:
+    _analyze_error_patterns: Identify patterns in error messages and types.
+    _generate_summary: Create human-readable incident summary.
+    _identify_root_causes: Determine probable root causes with evidence.
+    _generate_recommendations: Produce prioritized remediation actions.
+
+Example:
+    >>> from adapt_rca.reasoning.agent import analyze_incident_group
+    >>> from adapt_rca.models import IncidentGroup, Event
+    >>>
+    >>> events = [Event(...), Event(...)]
+    >>> incident = IncidentGroup.from_events(events)
+    >>> result = analyze_incident_group(incident)
+    >>> print(result.incident_summary)
+    >>> for rc in result.probable_root_causes:
+    ...     print(f"{rc.description} (confidence: {rc.confidence})")
+"""
 from typing import List, Dict, Optional, Any
 import logging
 from collections import Counter
@@ -19,17 +47,29 @@ from ..constants import (
 logger = logging.getLogger(__name__)
 
 
-def analyze_incident(events: List[Dict]) -> Dict:
-    """
-    Analyze an incident from a list of event dictionaries.
+def analyze_incident(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Analyze an incident from a list of event dictionaries.
 
-    This is the legacy interface for backward compatibility.
+    This is the legacy interface for backward compatibility with older code
+    that expects dictionary inputs and outputs.
 
     Args:
-        events: List of event dictionaries
+        events: List of event dictionaries with keys like 'timestamp',
+            'service', 'level', 'message', etc.
 
     Returns:
-        Analysis results as dictionary
+        Analysis results as dictionary with keys:
+            - incident_summary (str)
+            - probable_root_causes (List[str])
+            - recommended_actions (List[str])
+
+    Example:
+        >>> events = [
+        ...     {"timestamp": "2024-01-01T10:00:00Z", "service": "api", "message": "Error"},
+        ...     {"timestamp": "2024-01-01T10:01:00Z", "service": "db", "message": "Timeout"}
+        ... ]
+        >>> result = analyze_incident(events)
+        >>> print(result["incident_summary"])
     """
     # Convert dict events to Event objects
     event_objects = [Event(**e) for e in events]
@@ -43,17 +83,43 @@ def analyze_incident(events: List[Dict]) -> Dict:
 
 
 def analyze_incident_group(incident: IncidentGroup) -> AnalysisResult:
-    """
-    Analyze an incident group and produce analysis results.
+    """Analyze an incident group and produce analysis results.
 
     Uses heuristic analysis and causal graph building to identify
-    root causes and recommend actions.
+    root causes and recommend actions. This is the main analysis
+    function that orchestrates the entire analysis pipeline.
+
+    The analysis process:
+    1. Build causal graph from event timing and relationships
+    2. Identify root cause services using graph topology
+    3. Analyze error patterns and message frequencies
+    4. Generate human-readable summary
+    5. Identify probable root causes with evidence
+    6. Generate prioritized recommendations
 
     Args:
-        incident: The incident group to analyze
+        incident: The incident group containing related events to analyze.
 
     Returns:
-        Complete analysis results
+        AnalysisResult object containing:
+            - incident_summary: Human-readable summary
+            - probable_root_causes: List of RootCause objects with evidence
+            - recommended_actions: Prioritized list of RecommendedAction objects
+            - affected_services: List of service names
+            - causal_graph: Graph showing service relationships
+            - metadata: Additional analysis metadata
+
+    Example:
+        >>> from adapt_rca.models import Event, IncidentGroup
+        >>> events = [
+        ...     Event(service="api", message="Connection failed"),
+        ...     Event(service="db", message="Query timeout")
+        ... ]
+        >>> incident = IncidentGroup.from_events(events)
+        >>> result = analyze_incident_group(incident)
+        >>> print(result.incident_summary)
+        >>> for cause in result.probable_root_causes:
+        ...     print(f"{cause.description}: {cause.confidence}")
     """
     if not incident.events:
         return AnalysisResult(
@@ -107,14 +173,25 @@ def analyze_incident_group(incident: IncidentGroup) -> AnalysisResult:
 
 
 def _analyze_error_patterns(events: List[Event]) -> Dict[str, Any]:
-    """
-    Analyze error patterns in events.
+    """Analyze error patterns in events.
+
+    Identifies common patterns including most frequent error messages,
+    distribution of error types/levels, and temporal patterns.
 
     Args:
-        events: List of Event objects
+        events: List of Event objects to analyze.
 
     Returns:
-        Dictionary of error patterns
+        Dictionary containing:
+            - most_common_errors: List of most frequent error messages with counts
+            - error_types: Dictionary mapping error levels to their counts
+            - temporal_distribution: Time-based distribution info (currently empty)
+
+    Example:
+        >>> events = [Event(message="DB timeout"), Event(message="DB timeout")]
+        >>> patterns = _analyze_error_patterns(events)
+        >>> patterns["most_common_errors"][0]
+        {'message': 'DB timeout', 'count': 2}
     """
     patterns = {
         "most_common_errors": [],
@@ -144,16 +221,23 @@ def _generate_summary(
     root_causes: List[str],
     error_patterns: Dict[str, Any]
 ) -> str:
-    """
-    Generate incident summary.
+    """Generate human-readable incident summary.
+
+    Creates a concise summary describing the incident's scope, affected
+    services, identified root causes, and severity.
 
     Args:
-        incident: The incident group
-        root_causes: Identified root cause services
-        error_patterns: Error pattern analysis
+        incident: The incident group containing events and metadata.
+        root_causes: List of service names identified as root causes.
+        error_patterns: Error pattern analysis from _analyze_error_patterns.
 
     Returns:
-        Human-readable summary
+        Multi-sentence summary string describing the incident.
+
+    Example:
+        >>> summary = _generate_summary(incident, ["api-service"], patterns)
+        >>> print(summary)
+        'Incident involving 5 events across 2 service(s). Affected services: api-service, database. Likely originated in: api-service. Highest severity: ERROR.'
     """
     event_count = len(incident.events)
     service_count = len(incident.services)
@@ -190,17 +274,30 @@ def _identify_root_causes(
     root_cause_services: List[str],
     error_patterns: Dict[str, Any]
 ) -> List[RootCause]:
-    """
-    Identify probable root causes.
+    """Identify probable root causes with evidence and confidence scores.
+
+    Combines graph-based analysis (topology-based root causes) with
+    pattern-based analysis (repeated errors) to identify likely root causes.
+    Each root cause includes supporting evidence and a confidence score.
 
     Args:
-        incident: The incident group
-        causal_graph: Built causal graph
-        root_cause_services: Services identified as root causes
-        error_patterns: Error pattern analysis
+        incident: The incident group being analyzed.
+        causal_graph: Built causal graph showing service relationships.
+        root_cause_services: Services identified as root causes from graph topology.
+        error_patterns: Error pattern analysis results.
 
     Returns:
-        List of RootCause objects
+        List of RootCause objects, each containing:
+            - description: Human-readable root cause description
+            - confidence: Confidence score (0.0 to 1.0)
+            - evidence: List of supporting evidence strings
+
+    Example:
+        >>> causes = _identify_root_causes(incident, graph, ["api"], patterns)
+        >>> for cause in causes:
+        ...     print(f"{cause.description} ({cause.confidence})")
+        ...     for evidence in cause.evidence:
+        ...         print(f"  - {evidence}")
     """
     root_causes = []
 
@@ -264,16 +361,27 @@ def _generate_recommendations(
     root_cause_services: List[str],
     error_patterns: Dict[str, Any]
 ) -> List[RecommendedAction]:
-    """
-    Generate recommended actions.
+    """Generate prioritized recommended actions for remediation.
+
+    Creates a list of actionable recommendations organized by category
+    (investigate, fix, monitor, document) and priority level. Recommendations
+    are tailored to the specific incident characteristics.
 
     Args:
-        incident: The incident group
-        root_cause_services: Services identified as root causes
-        error_patterns: Error pattern analysis
+        incident: The incident group being analyzed.
+        root_cause_services: Services identified as root causes.
+        error_patterns: Error pattern analysis results.
 
     Returns:
-        List of RecommendedAction objects
+        List of RecommendedAction objects, each containing:
+            - description: Action description
+            - priority: Priority level (1=critical to 5=low)
+            - category: Action category (investigate/fix/monitor/document)
+
+    Example:
+        >>> actions = _generate_recommendations(incident, ["api"], patterns)
+        >>> for action in sorted(actions, key=lambda a: a.priority):
+        ...     print(f"[P{action.priority}] {action.description} ({action.category})")
     """
     recommendations = []
 

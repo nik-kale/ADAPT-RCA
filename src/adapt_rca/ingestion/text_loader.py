@@ -9,6 +9,7 @@ from datetime import datetime
 
 from ..utils import validate_file_size, get_file_size, format_bytes, PathValidationError
 from ..constants import MAX_FILE_SIZE_BYTES
+from ..security.sanitization import validate_regex_safety
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,23 @@ def load_text_log(
 
     # Select pattern
     if custom_pattern:
-        pattern = re.compile(custom_pattern)
+        # Validate custom pattern for ReDoS vulnerabilities
+        try:
+            if not validate_regex_safety(custom_pattern, timeout=1.0):
+                raise ValueError(
+                    f"Custom regex pattern appears unsafe (potential ReDoS): {custom_pattern[:50]}"
+                )
+        except ValueError as e:
+            # Re-raise validation errors
+            raise ValueError(f"Unsafe regex pattern: {e}") from e
+        except Exception as e:
+            logger.warning(f"Could not validate regex pattern safety: {e}")
+            # Allow it but log warning
+
+        try:
+            pattern = re.compile(custom_pattern)
+        except re.error as e:
+            raise ValueError(f"Invalid regex pattern: {e}") from e
     elif log_format == "syslog":
         pattern = SYSLOG_PATTERN
     elif log_format == "nginx":

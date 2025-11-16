@@ -1,3 +1,21 @@
+"""Export incident analysis results to various file formats.
+
+This module provides exporters for saving analysis results and causal graphs
+to different file formats including JSON, Markdown, Mermaid diagrams, and
+Graphviz DOT format.
+
+Functions:
+    export_json: Export results to JSON format.
+    export_markdown: Export results to Markdown report.
+    export_graph_mermaid: Export causal graph as Mermaid diagram.
+    export_graph_dot: Export causal graph as Graphviz DOT format.
+
+Example:
+    >>> from adapt_rca.reporting.exporters import export_json, export_markdown
+    >>> result = {"incident_summary": "Service failure", ...}
+    >>> export_json(result, "output/analysis.json")
+    >>> export_markdown(result, "output/report.md")
+"""
 from typing import Dict, Any
 import json
 import logging
@@ -8,16 +26,30 @@ from ..utils import validate_output_path, PathValidationError
 logger = logging.getLogger(__name__)
 
 
-def export_json(result: Dict, output_path: str | Path) -> None:
-    """
-    Export analysis results to JSON format.
+def export_json(result: Dict[str, Any], output_path: str | Path) -> None:
+    """Export analysis results to JSON format.
+
+    Serializes the analysis results dictionary to a formatted JSON file
+    with 2-space indentation and UTF-8 encoding. The output path will be
+    validated and must have a .json extension.
 
     Args:
-        result: Analysis results dictionary
-        output_path: Path to write JSON file
+        result: Analysis results dictionary containing incident summary,
+            root causes, recommended actions, and optional causal graph.
+        output_path: Path where the JSON file should be written. Must have
+            .json extension. Can be string or Path object.
 
     Raises:
-        PathValidationError: If output path is invalid
+        PathValidationError: If output path is invalid or has wrong extension.
+        IOError: If file cannot be written.
+
+    Example:
+        >>> result = {
+        ...     "incident_summary": "Database timeout",
+        ...     "probable_root_causes": ["High query load"],
+        ...     "recommended_actions": ["Optimize queries"]
+        ... }
+        >>> export_json(result, "output/analysis.json")
     """
     path = validate_output_path(
         output_path,
@@ -34,16 +66,35 @@ def export_json(result: Dict, output_path: str | Path) -> None:
         raise
 
 
-def export_markdown(result: Dict, output_path: str | Path) -> None:
-    """
-    Export analysis results to Markdown format.
+def export_markdown(result: Dict[str, Any], output_path: str | Path) -> None:
+    """Export analysis results to Markdown format.
+
+    Generates a formatted Markdown report with sections for summary,
+    root causes, recommended actions, and causal analysis (if available).
+    The output includes proper Markdown headers and bullet lists.
 
     Args:
-        result: Analysis results dictionary
-        output_path: Path to write Markdown file
+        result: Analysis results dictionary with keys:
+            - incident_summary (str): Brief incident description
+            - probable_root_causes (List[str]): Identified root causes
+            - recommended_actions (List[str]): Suggested remediation steps
+            - causal_graph (Dict, optional): Causal graph data including
+              root_causes, nodes, and edges
+        output_path: Path where the Markdown file should be written. Must have
+            .md or .markdown extension. Can be string or Path object.
 
     Raises:
-        PathValidationError: If output path is invalid
+        PathValidationError: If output path is invalid or has wrong extension.
+        IOError: If file cannot be written.
+
+    Example:
+        >>> result = {
+        ...     "incident_summary": "API service degradation",
+        ...     "probable_root_causes": ["Database connection pool exhaustion"],
+        ...     "recommended_actions": ["Increase pool size"],
+        ...     "causal_graph": {"root_causes": ["database"], "nodes": [...]}
+        ... }
+        >>> export_markdown(result, "output/incident_report.md")
     """
     path = validate_output_path(
         output_path,
@@ -95,15 +146,31 @@ def export_graph_mermaid(
     causal_graph_dict: Dict[str, Any],
     output_path: str | Path
 ) -> None:
-    """
-    Export causal graph as Mermaid diagram.
+    """Export causal graph as Mermaid diagram.
+
+    Generates a Mermaid flowchart (graph TD) syntax file that can be
+    rendered into a visual diagram. The diagram shows services as nodes
+    with error counts, and edges labeled with confidence scores and time deltas.
 
     Args:
         causal_graph_dict: Causal graph dictionary from CausalGraph.to_dict()
-        output_path: Path to write Mermaid file
+            with keys:
+            - nodes (List[Dict]): List of node dictionaries with 'id' and 'error_count'
+            - edges (List[Dict]): List of edge dictionaries with 'from', 'to',
+              'confidence', and optional 'time_delta_seconds'
+        output_path: Path where the Mermaid file should be written. Must have
+            .mmd or .mermaid extension. Can be string or Path object.
 
     Raises:
-        PathValidationError: If output path is invalid
+        PathValidationError: If output path is invalid or has wrong extension.
+        IOError: If file cannot be written.
+
+    Example:
+        >>> from adapt_rca.graph.causal_graph import CausalGraph
+        >>> graph = CausalGraph.from_incident_group(incident)
+        >>> graph_dict = graph.to_dict()
+        >>> export_graph_mermaid(graph_dict, "output/causal_graph.mmd")
+        >>> # View in Mermaid Live Editor or render with mermaid-cli
     """
     path = validate_output_path(
         output_path,
@@ -142,15 +209,33 @@ def export_graph_dot(
     causal_graph_dict: Dict[str, Any],
     output_path: str | Path
 ) -> None:
-    """
-    Export causal graph as Graphviz DOT format.
+    """Export causal graph as Graphviz DOT format.
+
+    Generates a DOT format file that can be rendered with Graphviz tools
+    into various image formats (PNG, SVG, PDF, etc.). Root cause nodes are
+    highlighted with a light coral background color.
 
     Args:
         causal_graph_dict: Causal graph dictionary from CausalGraph.to_dict()
-        output_path: Path to write DOT file
+            with keys:
+            - nodes (List[Dict]): List of node dictionaries with 'id' and 'error_count'
+            - edges (List[Dict]): List of edge dictionaries with 'from', 'to',
+              'confidence', and optional 'time_delta_seconds'
+            - root_causes (List[str]): List of root cause service IDs
+        output_path: Path where the DOT file should be written. Must have
+            .dot or .gv extension. Can be string or Path object.
 
     Raises:
-        PathValidationError: If output path is invalid
+        PathValidationError: If output path is invalid or has wrong extension.
+        IOError: If file cannot be written.
+
+    Example:
+        >>> from adapt_rca.graph.causal_graph import CausalGraph
+        >>> graph = CausalGraph.from_incident_group(incident)
+        >>> graph_dict = graph.to_dict()
+        >>> export_graph_dot(graph_dict, "output/causal_graph.dot")
+        >>> # Render with: dot -Tpng output/causal_graph.dot -o graph.png
+        >>> # Or: dot -Tsvg output/causal_graph.dot -o graph.svg
     """
     path = validate_output_path(
         output_path,

@@ -1,0 +1,47 @@
+# Example ADAPT-RCA configuration file (YAML format)
+# Copy this file to adapt-rca.yaml and customize as needed
+#
+# Configuration file locations (searched in order):
+#   1. ./adapt-rca.yaml
+#   2. ~/.adapt-rca.yaml
+#   3. /etc/adapt-rca.yaml
+#
+# Environment variables override file settings
+
+# LLM Integration Configuration
+llm:
+  # Provider: "none", "openai", or "anthropic"
+  provider: openai
+
+  # Model identifier (required if provider is not "none")
+  model: gpt-4
+
+  # API timeout in seconds
+  timeout: 30
+
+# Event Processing Configuration
+processing:
+  # Maximum number of events to process
+  max_events: 5000
+
+  # Time window for event grouping in minutes
+  time_window_minutes: 15
+
+  # Maximum log file size in MB
+  max_file_size_mb: 100
+
+# Analysis Configuration
+analysis:
+  # Enable causal graph analysis
+  use_causal_graph: true
+
+  # Confidence threshold for recommendations (0.0 - 1.0)
+  confidence_threshold: 0.6
+
+# Logging Configuration
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+
+  # Optional log file path (omit to log to console only)
+  # file: /var/log/adapt-rca.log

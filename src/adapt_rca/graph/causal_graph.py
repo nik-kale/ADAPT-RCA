@@ -1,3 +1,24 @@
+"""Causal graph construction and analysis for incident root cause detection.
+
+This module provides classes and methods for building directed graphs that represent
+causal relationships between services based on temporal patterns and error propagation.
+The graph structure helps identify root causes by analyzing event sequences and
+service dependencies.
+
+Classes:
+    CausalNode: Represents a service or component node in the causal graph.
+    CausalEdge: Represents a directed edge showing potential causation between nodes.
+    CausalGraph: Main graph structure for building and analyzing causal relationships.
+
+Example:
+    >>> from adapt_rca.graph.causal_graph import CausalGraph
+    >>> from adapt_rca.models import IncidentGroup
+    >>>
+    >>> # Build graph from incident
+    >>> graph = CausalGraph.from_incident_group(incident)
+    >>> root_causes = graph.get_root_causes()
+    >>> print(f"Root causes: {root_causes}")
+"""
 from typing import List, Dict, Optional, Set, Any
 from datetime import datetime, timedelta
 import logging
@@ -13,9 +34,27 @@ logger = logging.getLogger(__name__)
 
 
 class CausalNode:
-    """Represents a node (service/component) in the causal graph."""
+    """Represents a node (service/component) in the causal graph.
 
-    def __init__(self, node_id: str, metadata: Optional[Dict[str, Any]] = None):
+    A node tracks error events for a specific service or component, including
+    timing information and error counts. This information is used to determine
+    causal relationships and identify root causes.
+
+    Attributes:
+        id (str): Unique identifier for the node (typically service/component name).
+        metadata (Dict[str, Any]): Additional metadata about the node.
+        error_count (int): Total number of errors recorded for this node.
+        first_error (Optional[datetime]): Timestamp of the first error event.
+        last_error (Optional[datetime]): Timestamp of the most recent error event.
+    """
+
+    def __init__(self, node_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Initialize a causal node.
+
+        Args:
+            node_id: Unique identifier for the node.
+            metadata: Optional dictionary of additional metadata.
+        """
         self.id = node_id
         self.metadata = metadata or {}
         self.error_count = 0
@@ -23,7 +62,11 @@ class CausalNode:
         self.last_error: Optional[datetime] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
+        """Convert node to dictionary representation.
+
+        Returns:
+            Dictionary containing node id, metadata, error statistics, and timing info.
+        """
         return {
             "id": self.id,
             "metadata": self.metadata,
@@ -34,7 +77,19 @@ class CausalNode:
 
 
 class CausalEdge:
-    """Represents a directed edge showing potential causation."""
+    """Represents a directed edge showing potential causation between services.
+
+    An edge indicates that errors in the source node may have caused errors
+    in the target node. The confidence score and time delta provide additional
+    context for the causal relationship.
+
+    Attributes:
+        from_node (str): Source node ID (potentially causing service).
+        to_node (str): Target node ID (potentially affected service).
+        evidence (List[str]): List of evidence supporting this causal relationship.
+        time_delta (Optional[timedelta]): Time difference between error events.
+        confidence (float): Confidence score between 0.0 and 1.0.
+    """
 
     def __init__(
         self,
@@ -43,7 +98,16 @@ class CausalEdge:
         evidence: Optional[List[str]] = None,
         time_delta: Optional[timedelta] = None,
         confidence: float = 0.5
-    ):
+    ) -> None:
+        """Initialize a causal edge.
+
+        Args:
+            from_node: Source node identifier.
+            to_node: Target node identifier.
+            evidence: List of evidence strings supporting this edge.
+            time_delta: Time difference between the causally related events.
+            confidence: Confidence score (0.0 to 1.0, default 0.5).
+        """
         self.from_node = from_node
         self.to_node = to_node
         self.evidence = evidence or []
@@ -51,7 +115,11 @@ class CausalEdge:
         self.confidence = confidence
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
+        """Convert edge to dictionary representation.
+
+        Returns:
+            Dictionary containing edge endpoints, evidence, timing, and confidence.
+        """
         return {
             "from": self.from_node,
             "to": self.to_node,
@@ -62,14 +130,26 @@ class CausalEdge:
 
 
 class CausalGraph:
-    """
-    Builds and manages a directed graph of components, errors, and dependencies.
+    """Builds and manages a directed graph of components, errors, and dependencies.
 
     This graph represents the causal relationships between services based on
-    temporal patterns and error propagation.
+    temporal patterns and error propagation. It analyzes event sequences to
+    identify which services may have caused errors in other services.
+
+    Attributes:
+        nodes (Dict[str, CausalNode]): Dictionary mapping node IDs to CausalNode objects.
+        edges (List[CausalEdge]): List of directed edges representing causal relationships.
+
+    Example:
+        >>> graph = CausalGraph()
+        >>> graph.add_node("api-gateway")
+        >>> graph.add_node("database")
+        >>> graph.add_edge("api-gateway", "database", confidence=0.8)
+        >>> root_causes = graph.get_root_causes()
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize an empty causal graph."""
         self.nodes: Dict[str, CausalNode] = {}
         self.edges: List[CausalEdge] = []
 
@@ -125,13 +205,16 @@ class CausalGraph:
         logger.debug(f"Added edge: {from_node} -> {to_node} (confidence: {confidence})")
 
     def record_error(self, service: str, timestamp: Optional[datetime], message: str) -> None:
-        """
-        Record an error event for a service.
+        """Record an error event for a service.
+
+        This method updates the error statistics for the specified service node,
+        including error count and timing information. If the node doesn't exist,
+        it will be created automatically.
 
         Args:
-            service: Service name
-            timestamp: Error timestamp
-            message: Error message
+            service: Service name (will be created as node if not exists).
+            timestamp: Error timestamp (can be None for events without timing).
+            message: Error message text.
         """
         node = self.add_node(service)
         node.error_count += 1
@@ -144,16 +227,30 @@ class CausalGraph:
 
     @classmethod
     def from_incident_group(cls, incident: IncidentGroup) -> 'CausalGraph':
-        """
-        Build a causal graph from an incident group.
+        """Build a causal graph from an incident group.
 
         Analyzes temporal patterns and service relationships to infer causation.
+        Events that occur close together in time are analyzed to determine if
+        one service's errors may have caused another service's errors.
+
+        The algorithm:
+        1. Sorts events by timestamp
+        2. Records all errors in the graph
+        3. Identifies event pairs within the correlation time window
+        4. Creates edges with confidence based on temporal proximity
+        5. Closer events receive higher confidence scores
 
         Args:
-            incident: The incident group to analyze
+            incident: The incident group containing events to analyze.
 
         Returns:
-            A CausalGraph representing the incident
+            A CausalGraph with nodes for each service and edges representing
+            potential causal relationships.
+
+        Example:
+            >>> incident = IncidentGroup.from_events(events)
+            >>> graph = CausalGraph.from_incident_group(incident)
+            >>> print(f"Found {len(graph.edges)} causal relationships")
         """
         graph = cls()
 
@@ -180,57 +277,80 @@ class CausalGraph:
 
         # Detect causal relationships based on temporal patterns
         # If service A errors, then service B errors shortly after, A might cause B
+        # OPTIMIZED: O(n·k) where k is events within time window (was O(n²))
         max_time_window = timedelta(minutes=TIME_CORRELATION_WINDOW_MINUTES)
 
+        # Track which edges we've already added to avoid duplicates
+        # Using set of tuples is more efficient than checking list each time
+        existing_edges: Set[tuple] = set()
+
+        # Use sliding window approach for O(n·k) complexity
         for i, event1 in enumerate(sorted_events):
             if not event1.service:
                 continue
 
-            for event2 in sorted_events[i + 1:]:
-                if not event2.service or event2.service == event1.service:
-                    continue
+            # Only look at events within the time window (bounded by k)
+            # Since events are sorted, we can break early when outside window
+            j = i + 1
+            while j < len(sorted_events):
+                event2 = sorted_events[j]
 
+                # Calculate time difference
                 time_diff = event2.timestamp - event1.timestamp
 
+                # Break early if beyond time window (optimization)
                 if time_diff > max_time_window:
-                    break  # Events too far apart
+                    break
 
-                # Calculate confidence based on time proximity
-                # Closer events = higher confidence
-                confidence = 1.0 - (time_diff.total_seconds() / max_time_window.total_seconds())
-                # Clamp between MIN_CONFIDENCE + 0.1 and MAX_CONFIDENCE - 0.1
-                confidence = max(MIN_CONFIDENCE + 0.1, min(MAX_CONFIDENCE - 0.1, confidence))
+                # Skip if same service or no service
+                if event2.service and event2.service != event1.service:
+                    # Calculate confidence based on time proximity
+                    # Closer events = higher confidence
+                    confidence = 1.0 - (time_diff.total_seconds() / max_time_window.total_seconds())
+                    # Clamp between MIN_CONFIDENCE + 0.1 and MAX_CONFIDENCE - 0.1
+                    confidence = max(MIN_CONFIDENCE + 0.1, min(MAX_CONFIDENCE - 0.1, confidence))
 
-                # Check if edge already exists
-                existing = any(
-                    e.from_node == event1.service and e.to_node == event2.service
-                    for e in graph.edges
-                )
+                    # Check if edge already exists using set (O(1) lookup)
+                    edge_key = (event1.service, event2.service)
+                    if edge_key not in existing_edges:
+                        existing_edges.add(edge_key)
 
-                if not existing:
-                    evidence = [
-                        f"{event1.service}: {event1.message or 'error'}",
-                        f"{event2.service}: {event2.message or 'error'}"
-                    ]
-                    graph.add_edge(
-                        event1.service,
-                        event2.service,
-                        evidence=evidence,
-                        time_delta=time_diff,
-                        confidence=confidence
-                    )
+                        evidence = [
+                            f"{event1.service}: {event1.message or 'error'}",
+                            f"{event2.service}: {event2.message or 'error'}"
+                        ]
+                        graph.add_edge(
+                            event1.service,
+                            event2.service,
+                            evidence=evidence,
+                            time_delta=time_diff,
+                            confidence=confidence
+                        )
+
+                j += 1
 
         return graph
 
     def get_root_causes(self) -> List[str]:
-        """
-        Identify potential root cause services.
+        """Identify potential root cause services.
 
-        Root causes are services with outgoing edges but few/no incoming edges,
-        and errors that occurred earliest.
+        Root causes are identified using graph topology and timing:
+        - Services with outgoing edges (affect others) but no incoming edges
+        - If no clear topology root, the service with the earliest error
+
+        This heuristic assumes that root cause services:
+        1. Cause errors in downstream services (outgoing edges)
+        2. Are not caused by other services (no incoming edges)
+        3. Experience errors first in the incident timeline
 
         Returns:
-            List of service IDs that are likely root causes
+            List of service IDs that are likely root causes. May be empty
+            if no services have errors.
+
+        Example:
+            >>> root_causes = graph.get_root_causes()
+            >>> if root_causes:
+            ...     print(f"Root cause: {root_causes[0]}")
         """
         # Count incoming edges for each node
         incoming_count: Dict[str, int] = {node_id: 0 for node_id in self.nodes}
@@ -260,11 +380,17 @@ class CausalGraph:
         return root_causes
 
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Export graph as a dictionary.
+        """Export graph as a dictionary.
+
+        Serializes the entire graph structure including nodes, edges, and
+        identified root causes into a dictionary format suitable for JSON
+        export or further processing.
 
         Returns:
-            Dictionary with nodes and edges
+            Dictionary containing:
+                - nodes: List of node dictionaries
+                - edges: List of edge dictionaries
+                - root_causes: List of root cause service IDs
         """
         return {
             "nodes": [node.to_dict() for node in self.nodes.values()],
@@ -273,11 +399,19 @@ class CausalGraph:
         }
 
     def to_mermaid(self) -> str:
-        """
-        Export graph as Mermaid diagram syntax.
+        """Export graph as Mermaid diagram syntax.
+
+        Generates a Mermaid flowchart showing services as nodes and causal
+        relationships as edges. Node labels include error counts, and edge
+        labels show confidence scores and time deltas.
 
         Returns:
-            Mermaid diagram as string
+            String containing Mermaid diagram syntax (graph TD format).
+
+        Example:
+            >>> mermaid = graph.to_mermaid()
+            >>> with open('graph.mmd', 'w') as f:
+            ...     f.write(mermaid)
         """
         lines = ["graph TD"]
 
@@ -300,11 +434,20 @@ class CausalGraph:
         return "\n".join(lines)
 
     def to_dot(self) -> str:
-        """
-        Export graph as Graphviz DOT format.
+        """Export graph as Graphviz DOT format.
+
+        Generates a DOT format graph suitable for rendering with Graphviz.
+        Root cause nodes are highlighted with a light coral background color.
+        The graph uses left-to-right layout (rankdir=LR).
 
         Returns:
-            DOT format string
+            String containing DOT format graph specification.
+
+        Example:
+            >>> dot = graph.to_dot()
+            >>> with open('graph.dot', 'w') as f:
+            ...     f.write(dot)
+            >>> # Render with: dot -Tpng graph.dot -o graph.png
         """
         lines = ["digraph CausalGraph {"]
         lines.append("    rankdir=LR;")
