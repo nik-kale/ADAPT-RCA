@@ -162,7 +162,7 @@ class AnalysisResult(BaseModel):
     event_count: int = 0
     time_range: Optional[Dict[str, Optional[datetime]]] = None
     causal_graph: Optional[Dict[str, Any]] = None
-    metadata: Dict[str, Any] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         json_encoders = {
