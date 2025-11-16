@@ -6,12 +6,10 @@ import logging
 from pathlib import Path
 from typing import Iterable, Dict, Any, List, Optional
 
-from ..utils import get_file_size, format_bytes
+from ..utils import validate_file_size, get_file_size, format_bytes, PathValidationError
+from ..constants import MAX_FILE_SIZE_BYTES
 
 logger = logging.getLogger(__name__)
-
-# Maximum file size: 100MB by default
-MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024
 
 
 def load_csv(
@@ -36,18 +34,18 @@ def load_csv(
         Dictionaries parsed from each CSV row
 
     Raises:
-        ValueError: If file is too large or path is invalid
+        PathValidationError: If file is too large
+        ValueError: If path is invalid
     """
     path = Path(path)
 
-    # Check file size
-    file_size = get_file_size(path)
-    if file_size > max_file_size:
-        raise ValueError(
-            f"File too large: {format_bytes(file_size)} "
-            f"(max: {format_bytes(max_file_size)})"
-        )
+    # Validate file size using shared utility
+    try:
+        validate_file_size(path, max_size_bytes=max_file_size, raise_on_error=True)
+    except PathValidationError as e:
+        raise ValueError(str(e)) from e
 
+    file_size = get_file_size(path)
     logger.debug(f"Loading CSV file: {path} ({format_bytes(file_size)})")
 
     # Default field mapping if none provided

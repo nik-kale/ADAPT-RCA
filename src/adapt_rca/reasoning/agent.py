@@ -4,6 +4,17 @@ from collections import Counter
 
 from ..models import Event, IncidentGroup, AnalysisResult, RootCause, RecommendedAction
 from ..graph.causal_graph import CausalGraph
+from ..constants import (
+    REPEATED_ERROR_THRESHOLD,
+    HIGH_CONFIDENCE_THRESHOLD,
+    MEDIUM_CONFIDENCE_THRESHOLD,
+    LOW_CONFIDENCE_THRESHOLD,
+    PRIORITY_CRITICAL,
+    PRIORITY_HIGH,
+    PRIORITY_MEDIUM,
+    MAX_ERROR_MESSAGE_LENGTH,
+    VALID_ACTION_CATEGORIES
+)
 
 logger = logging.getLogger(__name__)
 
@@ -211,22 +222,23 @@ def _identify_root_causes(
             root_causes.append(
                 RootCause(
                     description=f"{service} service failure or degradation",
-                    confidence=0.7,
+                    confidence=HIGH_CONFIDENCE_THRESHOLD,
                     evidence=evidence
                 )
             )
 
     # Add pattern-based root causes
-    if error_patterns.get("most_common_errors"):
+    if error_patterns.get("most_common_errors") and len(incident.events) > 0:
         most_common = error_patterns["most_common_errors"][0]
-        if most_common["count"] >= len(incident.events) * 0.3:  # 30% threshold
+        if most_common["count"] >= len(incident.events) * REPEATED_ERROR_THRESHOLD:
+            percentage = (most_common['count'] / len(incident.events)) * 100
             root_causes.append(
                 RootCause(
-                    description=f"Repeated error: {most_common['message'][:100]}",
-                    confidence=0.6,
+                    description=f"Repeated error: {most_common['message'][:MAX_ERROR_MESSAGE_LENGTH]}",
+                    confidence=MEDIUM_CONFIDENCE_THRESHOLD,
                     evidence=[
                         f"Occurred {most_common['count']} times",
-                        f"Represents {most_common['count'] / len(incident.events) * 100:.1f}% of all errors"
+                        f"Represents {percentage:.1f}% of all errors"
                     ]
                 )
             )
@@ -236,7 +248,7 @@ def _identify_root_causes(
         root_causes.append(
             RootCause(
                 description="Service interdependency issue or cascading failure",
-                confidence=0.4,
+                confidence=LOW_CONFIDENCE_THRESHOLD,
                 evidence=[
                     f"{len(incident.services)} services affected",
                     "Requires deeper investigation to pinpoint exact cause"
@@ -270,7 +282,7 @@ def _generate_recommendations(
         recommendations.append(
             RecommendedAction(
                 description=f"Investigate {', '.join(root_cause_services)} for root cause",
-                priority=1,
+                priority=PRIORITY_CRITICAL,
                 category="investigate"
             )
         )
@@ -281,7 +293,7 @@ def _generate_recommendations(
         recommendations.append(
             RecommendedAction(
                 description="Review critical/fatal errors immediately",
-                priority=1,
+                priority=PRIORITY_CRITICAL,
                 category="investigate"
             )
         )
@@ -291,7 +303,7 @@ def _generate_recommendations(
         recommendations.append(
             RecommendedAction(
                 description=f"Check {service} logs, metrics, and recent deployments",
-                priority=2,
+                priority=PRIORITY_HIGH,
                 category="investigate"
             )
         )
@@ -300,7 +312,7 @@ def _generate_recommendations(
     recommendations.append(
         RecommendedAction(
             description="Set up alerts for similar error patterns",
-            priority=3,
+            priority=PRIORITY_MEDIUM,
             category="monitor"
         )
     )
@@ -309,7 +321,7 @@ def _generate_recommendations(
     recommendations.append(
         RecommendedAction(
             description="Document findings and add to incident postmortem",
-            priority=4,
+            priority=PRIORITY_LOW,
             category="document"
         )
     )

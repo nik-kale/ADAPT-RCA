@@ -5,6 +5,7 @@ import logging
 from typing import List, Optional
 
 from .base import LLMProvider, LLMMessage, LLMResponse
+from ..constants import DEFAULT_ANTHROPIC_MODEL, DEFAULT_LLM_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +15,13 @@ class AnthropicProvider(LLMProvider):
 
     def __init__(
         self,
-        model: str = "claude-3-sonnet-20240229",
+        model: str = DEFAULT_ANTHROPIC_MODEL,
         api_key: Optional[str] = None,
+        timeout: int = DEFAULT_LLM_TIMEOUT_SECONDS,
         **kwargs
     ):
         super().__init__(model, api_key, **kwargs)
+        self.timeout = timeout
 
         try:
             import anthropic
@@ -29,10 +32,10 @@ class AnthropicProvider(LLMProvider):
             )
 
         if api_key:
-            self.client = anthropic.Anthropic(api_key=api_key)
+            self.client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
         else:
             # Will use ANTHROPIC_API_KEY environment variable
-            self.client = anthropic.Anthropic()
+            self.client = anthropic.Anthropic(timeout=timeout)
 
     def complete(
         self,
@@ -64,14 +67,15 @@ class AnthropicProvider(LLMProvider):
                     "content": msg.content
                 })
 
-        logger.debug(f"Calling Anthropic API with model {self.model}")
+        logger.debug(f"Calling Anthropic API with model {self.model} (timeout: {self.timeout}s)")
 
         try:
             kwargs = {
                 "model": self.model,
                 "messages": conversation_messages,
                 "temperature": temperature,
-                "max_tokens": max_tokens or 1024
+                "max_tokens": max_tokens or 1024,
+                "timeout": self.timeout
             }
 
             if system_message:

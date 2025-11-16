@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 from .base import LLMProvider
+from ..constants import DEFAULT_OPENAI_MODEL, DEFAULT_ANTHROPIC_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +40,13 @@ def get_llm_provider(
 
     if provider_name == "openai":
         from .openai_provider import OpenAIProvider
-        model = model or "gpt-4"
+        model = model or DEFAULT_OPENAI_MODEL
         logger.info(f"Using OpenAI provider with model {model}")
         return OpenAIProvider(model=model, api_key=api_key, **kwargs)
 
     elif provider_name == "anthropic":
         from .anthropic_provider import AnthropicProvider
-        model = model or "claude-3-sonnet-20240229"
+        model = model or DEFAULT_ANTHROPIC_MODEL
         logger.info(f"Using Anthropic provider with model {model}")
         return AnthropicProvider(model=model, api_key=api_key, **kwargs)
 

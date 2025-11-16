@@ -5,6 +5,7 @@ import logging
 from typing import List, Optional
 
 from .base import LLMProvider, LLMMessage, LLMResponse
+from ..constants import DEFAULT_OPENAI_MODEL, DEFAULT_LLM_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +13,15 @@ logger = logging.getLogger(__name__)
 class OpenAIProvider(LLMProvider):
     """OpenAI API provider for GPT models."""
 
-    def __init__(self, model: str = "gpt-4", api_key: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        model: str = DEFAULT_OPENAI_MODEL,
+        api_key: Optional[str] = None,
+        timeout: int = DEFAULT_LLM_TIMEOUT_SECONDS,
+        **kwargs
+    ):
         super().__init__(model, api_key, **kwargs)
+        self.timeout = timeout
 
         try:
             import openai
@@ -24,10 +32,10 @@ class OpenAIProvider(LLMProvider):
             )
 
         if api_key:
-            self.client = openai.OpenAI(api_key=api_key)
+            self.client = openai.OpenAI(api_key=api_key, timeout=timeout)
         else:
             # Will use OPENAI_API_KEY environment variable
-            self.client = openai.OpenAI()
+            self.client = openai.OpenAI(timeout=timeout)
 
     def complete(
         self,
@@ -52,14 +60,15 @@ class OpenAIProvider(LLMProvider):
             for msg in messages
         ]
 
-        logger.debug(f"Calling OpenAI API with model {self.model}")
+        logger.debug(f"Calling OpenAI API with model {self.model} (timeout: {self.timeout}s)")
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=openai_messages,
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                timeout=self.timeout
             )
 
             return LLMResponse(

@@ -3,6 +3,11 @@ from datetime import datetime, timedelta
 import logging
 
 from ..models import Event, IncidentGroup
+from ..constants import (
+    TIME_CORRELATION_WINDOW_MINUTES,
+    MIN_CONFIDENCE,
+    MAX_CONFIDENCE
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +106,20 @@ class CausalGraph:
             evidence: List of evidence supporting this edge
             time_delta: Time difference between events
             confidence: Confidence score (0.0 to 1.0)
+
+        Raises:
+            ValueError: If either node doesn't exist in the graph
         """
+        # Validate that both nodes exist
+        if from_node not in self.nodes:
+            raise ValueError(f"Source node '{from_node}' does not exist in graph. Add node first.")
+        if to_node not in self.nodes:
+            raise ValueError(f"Target node '{to_node}' does not exist in graph. Add node first.")
+
+        # Validate confidence score
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"Confidence must be between 0.0 and 1.0, got {confidence}")
+
         edge = CausalEdge(from_node, to_node, evidence, time_delta, confidence)
         self.edges.append(edge)
         logger.debug(f"Added edge: {from_node} -> {to_node} (confidence: {confidence})")
@@ -162,7 +180,7 @@ class CausalGraph:
 
         # Detect causal relationships based on temporal patterns
         # If service A errors, then service B errors shortly after, A might cause B
-        max_time_window = timedelta(minutes=5)
+        max_time_window = timedelta(minutes=TIME_CORRELATION_WINDOW_MINUTES)
 
         for i, event1 in enumerate(sorted_events):
             if not event1.service:
@@ -180,7 +198,8 @@ class CausalGraph:
                 # Calculate confidence based on time proximity
                 # Closer events = higher confidence
                 confidence = 1.0 - (time_diff.total_seconds() / max_time_window.total_seconds())
-                confidence = max(0.1, min(0.9, confidence))  # Clamp between 0.1 and 0.9
+                # Clamp between MIN_CONFIDENCE + 0.1 and MAX_CONFIDENCE - 0.1
+                confidence = max(MIN_CONFIDENCE + 0.1, min(MAX_CONFIDENCE - 0.1, confidence))
 
                 # Check if edge already exists
                 existing = any(

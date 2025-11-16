@@ -8,6 +8,13 @@ from typing import List, Optional
 from ..models import IncidentGroup, AnalysisResult, RootCause, RecommendedAction
 from ..llm.base import LLMProvider, LLMMessage
 from .agent import _analyze_error_patterns
+from ..constants import (
+    LLM_ANALYSIS_TEMPERATURE,
+    DEFAULT_LLM_MAX_TOKENS,
+    SAMPLE_EVENTS_DISPLAY_COUNT,
+    MAX_TOP_SERVICES_DISPLAY,
+    MAX_EDGES_DISPLAY
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +55,11 @@ def analyze_with_llm(
 
     try:
         # Get LLM response
-        response = llm_provider.complete(messages, temperature=0.3, max_tokens=1500)
+        response = llm_provider.complete(
+            messages,
+            temperature=LLM_ANALYSIS_TEMPERATURE,
+            max_tokens=DEFAULT_LLM_MAX_TOKENS
+        )
 
         # Parse response
         result = _parse_llm_response(response.content, incident, causal_graph_dict)
@@ -133,13 +144,13 @@ def _build_context(
     nodes = causal_graph_dict.get('nodes', [])
     if nodes:
         lines.append(f"\n### Service Error Counts:")
-        for node in sorted(nodes, key=lambda n: n['error_count'], reverse=True)[:5]:
+        for node in sorted(nodes, key=lambda n: n['error_count'], reverse=True)[:MAX_TOP_SERVICES_DISPLAY]:
             lines.append(f"- {node['id']}: {node['error_count']} errors")
 
     edges = causal_graph_dict.get('edges', [])
     if edges:
         lines.append(f"\n### Temporal Dependencies:")
-        for edge in edges[:5]:  # Top 5 edges
+        for edge in edges[:MAX_EDGES_DISPLAY]:
             time_delta = edge.get('time_delta_seconds', 0)
             conf = edge['confidence']
             lines.append(
@@ -159,15 +170,15 @@ def _build_context(
 
     # Sample events
     lines.append(f"\n## Sample Events")
-    for i, event in enumerate(incident.events[:5]):
+    for i, event in enumerate(incident.events[:SAMPLE_EVENTS_DISPLAY_COUNT]):
         ts = event.timestamp.isoformat() if event.timestamp else "unknown time"
         lines.append(
             f"{i+1}. [{ts}] {event.service or 'unknown'} - "
             f"{event.level or 'INFO'}: {event.message[:80] if event.message else 'No message'}"
         )
 
-    if len(incident.events) > 5:
-        lines.append(f"... and {len(incident.events) - 5} more events")
+    if len(incident.events) > SAMPLE_EVENTS_DISPLAY_COUNT:
+        lines.append(f"... and {len(incident.events) - SAMPLE_EVENTS_DISPLAY_COUNT} more events")
 
     return "\n".join(lines)
 

@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from .constants import MAX_FILE_SIZE_BYTES
+
 logger = logging.getLogger(__name__)
 
 
@@ -127,3 +129,39 @@ def format_bytes(size: int) -> str:
             return f"{size:.2f} {unit}"
         size /= 1024.0
     return f"{size:.2f} PB"
+
+
+def validate_file_size(
+    path: Path,
+    max_size_bytes: int = MAX_FILE_SIZE_BYTES,
+    raise_on_error: bool = True
+) -> bool:
+    """
+    Validate that a file size is within acceptable limits.
+
+    Args:
+        path: Path to file
+        max_size_bytes: Maximum allowed file size in bytes
+        raise_on_error: Whether to raise exception on validation failure
+
+    Returns:
+        True if file size is acceptable, False otherwise
+
+    Raises:
+        PathValidationError: If file is too large and raise_on_error is True
+    """
+    file_size = get_file_size(path)
+
+    if file_size > max_size_bytes:
+        msg = (
+            f"File size {format_bytes(file_size)} exceeds maximum "
+            f"allowed size of {format_bytes(max_size_bytes)}: {path}"
+        )
+        logger.warning(msg)
+
+        if raise_on_error:
+            raise PathValidationError(msg)
+        return False
+
+    logger.debug(f"File size validation passed: {format_bytes(file_size)}")
+    return True

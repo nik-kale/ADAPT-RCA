@@ -3,12 +3,10 @@ from typing import Iterable, Dict, Any
 import json
 import logging
 
-from ..utils import get_file_size, format_bytes
+from ..utils import validate_file_size, get_file_size, format_bytes, PathValidationError
+from ..constants import MAX_FILE_SIZE_BYTES
 
 logger = logging.getLogger(__name__)
-
-# Maximum file size: 100MB by default
-MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024
 
 
 def load_jsonl(
@@ -28,20 +26,19 @@ def load_jsonl(
         Dictionaries parsed from each JSON line
 
     Raises:
-        ValueError: If file is too large or path is invalid
+        PathValidationError: If file is too large
+        ValueError: If path is invalid
         json.JSONDecodeError: If strict=True and line parsing fails
     """
     path = Path(path)
 
-    # Check file size
-    file_size = get_file_size(path)
-    if file_size > max_file_size:
-        raise ValueError(
-            f"File too large: {format_bytes(file_size)} "
-            f"(max: {format_bytes(max_file_size)}). "
-            f"Increase max_file_size parameter or split the file."
-        )
+    # Validate file size using shared utility
+    try:
+        validate_file_size(path, max_size_bytes=max_file_size, raise_on_error=True)
+    except PathValidationError as e:
+        raise ValueError(str(e)) from e
 
+    file_size = get_file_size(path)
     logger.debug(f"Loading JSONL file: {path} ({format_bytes(file_size)})")
 
     line_number = 0
