@@ -152,6 +152,7 @@ class AnalysisResult(BaseModel):
         affected_services: Services affected by this incident
         event_count: Number of events analyzed
         time_range: Time range of the incident
+        causal_graph: Causal graph showing service dependencies
         metadata: Additional analysis metadata
     """
     incident_summary: str
@@ -160,7 +161,8 @@ class AnalysisResult(BaseModel):
     affected_services: List[str] = Field(default_factory=list)
     event_count: int = 0
     time_range: Optional[Dict[str, Optional[datetime]]] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    causal_graph: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any] = Field(default_factory=list)
 
     class Config:
         json_encoders = {
