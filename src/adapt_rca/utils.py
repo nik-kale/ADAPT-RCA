@@ -11,7 +11,11 @@ from .constants import MAX_FILE_SIZE_BYTES
 logger = logging.getLogger(__name__)
 
 
-class PathValidationError(Exception):
+# Import custom exceptions
+from .exceptions import ValidationError
+
+# Keep PathValidationError for backward compatibility, but inherit from ValidationError
+class PathValidationError(ValidationError):
     """Raised when path validation fails."""
     pass
 

@@ -2,10 +2,108 @@
 Simple web dashboard for ADAPT-RCA.
 """
 import logging
+import os
+import re
 from pathlib import Path
 from typing import Optional
 
+from ..constants import WEB_UPLOAD_MAX_SIZE_MB, WEB_ALLOWED_EXTENSIONS
+from ..utils import PathValidationError
+
 logger = logging.getLogger(__name__)
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize uploaded filename to prevent path traversal attacks.
+
+    Args:
+        filename: Original filename
+
+    Returns:
+        Sanitized filename
+
+    Raises:
+        ValueError: If filename is invalid
+    """
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+
+    # Remove path components
+    filename = os.path.basename(filename)
+
+    # Remove any remaining path separators
+    filename = filename.replace("/", "").replace("\\", "")
+
+    # Remove null bytes
+    filename = filename.replace("\x00", "")
+
+    # Limit to alphanumeric, dots, dashes, underscores
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+
+    # Prevent hidden files
+    if filename.startswith('.'):
+        filename = '_' + filename[1:]
+
+    # Ensure we still have a filename
+    if not filename or filename == '_':
+        raise ValueError("Invalid filename after sanitization")
+
+    # Limit length
+    if len(filename) > 255:
+        # Keep extension
+        name, ext = os.path.splitext(filename)
+        filename = name[:255-len(ext)] + ext
+
+    return filename
+
+
+def validate_upload(file, max_size_mb: int = WEB_UPLOAD_MAX_SIZE_MB) -> None:
+    """
+    Validate uploaded file.
+
+    Args:
+        file: Flask file upload object
+        max_size_mb: Maximum file size in MB
+
+    Raises:
+        ValueError: If validation fails
+    """
+    # Check filename
+    if not file.filename:
+        raise ValueError("No filename provided")
+
+    # Sanitize and check extension
+    safe_filename = sanitize_filename(file.filename)
+    ext = Path(safe_filename).suffix.lower()
+
+    if ext not in WEB_ALLOWED_EXTENSIONS:
+        allowed = ', '.join(sorted(WEB_ALLOWED_EXTENSIONS))
+        raise ValueError(
+            f"File type '{ext}' not allowed. Allowed types: {allowed}"
+        )
+
+    # Check file size (read first chunk to get size)
+    # Note: This reads the file into memory, but for web uploads that's acceptable
+    file.seek(0, os.SEEK_END)
+    size_bytes = file.tell()
+    file.seek(0)  # Reset to beginning
+
+    max_size_bytes = max_size_mb * 1024 * 1024
+    if size_bytes > max_size_bytes:
+        size_mb = size_bytes / (1024 * 1024)
+        raise ValueError(
+            f"File too large: {size_mb:.1f}MB (max: {max_size_mb}MB)"
+        )
+
+    # Basic MIME type validation (if available)
+    if hasattr(file, 'content_type') and file.content_type:
+        # Allow text and JSON types
+        allowed_mime_prefixes = ('text/', 'application/json', 'application/x-json')
+        if not any(file.content_type.startswith(prefix) for prefix in allowed_mime_prefixes):
+            logger.warning(f"Unexpected MIME type: {file.content_type}")
+
+    logger.debug(f"Upload validation passed: {safe_filename} ({size_bytes} bytes)")
 
 
 def create_app(debug: bool = False):
@@ -30,6 +128,7 @@ def create_app(debug: bool = False):
 
     app = Flask(__name__)
     app.config['DEBUG'] = debug
+    app.config['MAX_CONTENT_LENGTH'] = WEB_UPLOAD_MAX_SIZE_MB * 1024 * 1024  # Max upload size
 
     # HTML template
     INDEX_TEMPLATE = """
@@ -206,11 +305,22 @@ def create_app(debug: bool = False):
             if file.filename == '':
                 return jsonify({'error': 'No file selected'}), 400
 
+            # Validate upload (size, extension, filename)
+            try:
+                validate_upload(file)
+            except ValueError as e:
+                return jsonify({'error': f'Upload validation failed: {e}'}), 400
+
+            # Sanitize filename
+            safe_filename = sanitize_filename(file.filename)
+            ext = Path(safe_filename).suffix
+
             log_format = request.form.get('format', 'auto')
 
-            # Save uploaded file temporarily
+            # Save uploaded file temporarily with sanitized name
             import tempfile
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.log') as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext, prefix='adapt_rca_') as tmp:
+                # Save with size limit check
                 file.save(tmp.name)
                 tmp_path = Path(tmp.name)
 
