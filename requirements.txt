@@ -10,6 +10,9 @@ tomli>=2.0.0; python_version < '3.11'  # For TOML config files (built-in for Pyt
 passlib>=1.7.4  # For password hashing (Argon2)
 argon2-cffi>=21.0.0  # Argon2 backend for passlib
 
+# V2.0: Alerting dependencies (optional)
+# requests>=2.31.0  # For Slack and webhook notifiers
+
 # Optional dependencies (uncomment as needed):
 # Flask security (for web dashboard)
 # flask-wtf>=1.2.0  # CSRF protection
