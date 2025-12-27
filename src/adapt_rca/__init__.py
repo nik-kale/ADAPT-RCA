@@ -9,6 +9,15 @@ from .logging_context import (
     clear_context,
     LoggingContext,
 )
+from .metrics import (
+    track_pool_active_connections,
+    track_pool_available_connections,
+    track_pool_wait_time,
+    track_pool_exhaustion,
+    track_rca_duration,
+    track_rca_total,
+    get_metrics_text,
+)
 
 __all__ = [
     "__version__",
@@ -20,4 +29,11 @@ __all__ = [
     "get_context",
     "clear_context",
     "LoggingContext",
+    "track_pool_active_connections",
+    "track_pool_available_connections",
+    "track_pool_wait_time",
+    "track_pool_exhaustion",
+    "track_rca_duration",
+    "track_rca_total",
+    "get_metrics_text",
 ]
