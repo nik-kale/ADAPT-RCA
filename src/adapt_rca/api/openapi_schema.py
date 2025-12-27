@@ -320,7 +320,8 @@ def get_openapi_schema() -> dict:
     Get the OpenAPI schema.
     
     Returns:
-        OpenAPI schema dictionary
+        OpenAPI schema dictionary (deep copy)
     """
-    return OPENAPI_SCHEMA.copy()
+    import copy
+    return copy.deepcopy(OPENAPI_SCHEMA)
 

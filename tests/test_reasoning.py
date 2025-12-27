@@ -2,8 +2,8 @@
 Tests for reasoning module.
 """
 import pytest
-from adapt_rca.reasoning.heuristics import simple_grouping
-from adapt_rca.reasoning.agent import analyze_incident
+from src.adapt_rca.reasoning.heuristics import simple_grouping
+from src.adapt_rca.reasoning.agent import analyze_incident
 
 
 def test_simple_grouping_empty():

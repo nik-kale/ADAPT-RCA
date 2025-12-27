@@ -14,12 +14,12 @@ _start_time = time.time()
 def get_health_status() -> Dict:
     """
     Get health check status.
-    
+
     Returns:
         Health status dictionary
     """
     uptime = time.time() - _start_time
-    
+
     return {
         "status": "healthy",
         "uptime_seconds": round(uptime, 2),
@@ -31,9 +31,9 @@ def get_health_status() -> Dict:
 def get_readiness_status() -> Dict:
     """
     Get readiness check status.
-    
+
     Checks if service is ready to handle requests.
-    
+
     Returns:
         Readiness status dictionary
     """
@@ -42,9 +42,9 @@ def get_readiness_status() -> Dict:
         "database": True,  # Placeholder
         "cache": True,  # Placeholder
     }
-    
+
     is_ready = all(checks.values())
-    
+
     return {
         "status": "ready" if is_ready else "not_ready",
         "checks": checks
@@ -54,7 +54,7 @@ def get_readiness_status() -> Dict:
 def get_version_info() -> Dict:
     """
     Get version information.
-    
+
     Returns:
         Version information dictionary
     """

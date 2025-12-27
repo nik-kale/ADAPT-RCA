@@ -2,7 +2,8 @@
 Tests for parsing module.
 """
 import pytest
-from adapt_rca.parsing.log_parser import normalize_event
+from src.adapt_rca.parsing.log_parser import normalize_event
+from src.adapt_rca.exceptions import LogParseError, ValidationError
 
 
 def test_normalize_event_basic():
@@ -52,14 +53,23 @@ def test_normalize_event_severity_fallback():
 
 
 def test_normalize_event_missing_fields():
-    """Test normalization with missing fields."""
+    """Test normalization with message field."""
     raw = {
         "message": "Incomplete log"
     }
 
+    # Should pass with just message
     normalized = normalize_event(raw)
 
     assert normalized["timestamp"] is None
     assert normalized["service"] is None
     assert normalized["level"] is None
     assert normalized["message"] == "Incomplete log"
+
+
+def test_normalize_event_empty_raises_error():
+    """Test that completely empty event raises ValidationError."""
+    raw = {}
+    
+    with pytest.raises(ValidationError):
+        normalize_event(raw)

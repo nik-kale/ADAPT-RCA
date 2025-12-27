@@ -21,7 +21,7 @@ T = TypeVar('T')
 class RetryConfig:
     """
     Configuration for retry behavior.
-    
+
     Attributes:
         max_attempts: Maximum number of retry attempts
         backoff_factor: Multiplier for exponential backoff (default 1.0)
@@ -47,24 +47,24 @@ def calculate_backoff(
 ) -> float:
     """
     Calculate exponential backoff wait time.
-    
+
     Args:
         attempt: Current attempt number (0-indexed)
         backoff_factor: Multiplier for exponential backoff
         min_wait: Minimum wait time
         max_wait: Maximum wait time
         jitter: Whether to add random jitter
-        
+
     Returns:
         Wait time in seconds
     """
     # Exponential backoff: wait = min(max_wait, min_wait * (2^attempt) * backoff_factor)
     wait = min(max_wait, min_wait * (2 ** attempt) * backoff_factor)
-    
+
     # Add jitter: randomize between 50-100% of calculated wait
     if jitter:
         wait = wait * (0.5 + random.random() * 0.5)
-    
+
     return wait
 
 
@@ -78,7 +78,7 @@ def retry_sync(
 ) -> Callable:
     """
     Decorator for synchronous retry with exponential backoff.
-    
+
     Args:
         max_attempts: Maximum retry attempts
         backoff_factor: Backoff multiplier
@@ -86,10 +86,10 @@ def retry_sync(
         max_wait: Maximum wait seconds
         jitter: Add random jitter
         retryable_exceptions: Exception types to retry
-        
+
     Returns:
         Decorated function
-        
+
     Example:
         @retry_sync(max_attempts=3, backoff_factor=2.0)
         def fetch_data():
@@ -101,35 +101,35 @@ def retry_sync(
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> T:
             last_exception = None
-            
+
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
                 except retryable_exceptions as e:
                     last_exception = e
-                    
+
                     if attempt + 1 >= max_attempts:
                         logger.error(
                             f"Max retries ({max_attempts}) exceeded for {func.__name__}: {e}"
                         )
                         raise
-                    
+
                     wait_time = calculate_backoff(
                         attempt, backoff_factor, min_wait, max_wait, jitter
                     )
-                    
+
                     logger.warning(
                         f"Retry {attempt + 1}/{max_attempts} for {func.__name__} "
                         f"after {wait_time:.2f}s: {e}"
                     )
-                    
+
                     import time
                     time.sleep(wait_time)
-            
+
             # Should not reach here, but just in case
             if last_exception:
                 raise last_exception
-                
+
         return wrapper
     return decorator
 
@@ -144,7 +144,7 @@ def retry_async(
 ) -> Callable:
     """
     Decorator for async retry with exponential backoff.
-    
+
     Args:
         max_attempts: Maximum retry attempts
         backoff_factor: Backoff multiplier
@@ -152,10 +152,10 @@ def retry_async(
         max_wait: Maximum wait seconds
         jitter: Add random jitter
         retryable_exceptions: Exception types to retry
-        
+
     Returns:
         Decorated async function
-        
+
     Example:
         @retry_async(max_attempts=3, backoff_factor=2.0)
         async def fetch_data_async():
@@ -168,34 +168,34 @@ def retry_async(
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             last_exception = None
-            
+
             for attempt in range(max_attempts):
                 try:
                     return await func(*args, **kwargs)
                 except retryable_exceptions as e:
                     last_exception = e
-                    
+
                     if attempt + 1 >= max_attempts:
                         logger.error(
                             f"Max retries ({max_attempts}) exceeded for {func.__name__}: {e}"
                         )
                         raise
-                    
+
                     wait_time = calculate_backoff(
                         attempt, backoff_factor, min_wait, max_wait, jitter
                     )
-                    
+
                     logger.warning(
                         f"Retry {attempt + 1}/{max_attempts} for {func.__name__} "
                         f"after {wait_time:.2f}s: {e}"
                     )
-                    
+
                     await asyncio.sleep(wait_time)
-            
+
             # Should not reach here, but just in case
             if last_exception:
                 raise last_exception
-                
+
         return wrapper
     return decorator
 
