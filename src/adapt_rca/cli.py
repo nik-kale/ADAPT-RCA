@@ -8,9 +8,11 @@ from .parsing.log_parser import normalize_event
 from .reasoning.heuristics import simple_grouping
 from .reasoning.agent import analyze_incident
 from .reporting.formatter import format_human_readable
+from .version import __version__
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="ADAPT-RCA CLI")
+    parser.add_argument("--version", action="version", version=f"ADAPT-RCA {__version__}")
     parser.add_argument("--input", required=True, help="Path to JSONL log file")
     parser.add_argument("--output", help="Path to write JSON result")
     args = parser.parse_args()

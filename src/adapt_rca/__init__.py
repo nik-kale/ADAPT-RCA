@@ -1,4 +1,6 @@
 """
 ADAPT-RCA: Adaptive Diagnostic Agent for Proactive Troubleshooting – Root Cause Analyzer.
 """
-__version__ = "0.1.0"
+from .version import __version__, VERSION_INFO, get_version, get_version_info
+
+__all__ = ["__version__", "VERSION_INFO", "get_version", "get_version_info"]
