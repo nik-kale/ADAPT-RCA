@@ -1,0 +1,11 @@
+timestamp,service,level,message
+2025-11-16T10:00:00Z,database,ERROR,Connection pool exhausted - max 100 connections reached
+2025-11-16T10:00:05Z,api-gateway,ERROR,Timeout connecting to database service after 5000ms
+2025-11-16T10:00:10Z,api-gateway,ERROR,Timeout connecting to database service after 5000ms
+2025-11-16T10:00:12Z,web-frontend,ERROR,API request failed with status 504 Gateway Timeout
+2025-11-16T10:00:15Z,database,WARN,Slow query detected: SELECT * FROM users - 3200ms
+2025-11-16T10:00:20Z,api-gateway,ERROR,Timeout connecting to database service after 5000ms
+2025-11-16T10:00:25Z,cache-service,ERROR,Failed to connect to Redis: Connection refused
+2025-11-16T10:00:30Z,web-frontend,ERROR,API request failed with status 504 Gateway Timeout
+2025-11-16T10:00:35Z,database,CRITICAL,Out of memory - unable to allocate 512MB for query buffer
+2025-11-16T10:00:40Z,api-gateway,ERROR,Circuit breaker opened for database service

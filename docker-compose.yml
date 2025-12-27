@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  adapt-rca:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: adapt-rca:latest
+    container_name: adapt-rca
+    environment:
+      - ADAPT_RCA_LLM_PROVIDER=${ADAPT_RCA_LLM_PROVIDER:-none}
+      - ADAPT_RCA_LLM_MODEL=${ADAPT_RCA_LLM_MODEL:-}
+      - ADAPT_RCA_MAX_EVENTS=${ADAPT_RCA_MAX_EVENTS:-5000}
+      - ADAPT_RCA_TIME_WINDOW=${ADAPT_RCA_TIME_WINDOW:-15}
+    volumes:
+      # Mount local data directory
+      - ./data:/data
+      # Mount examples directory
+      - ./examples:/app/examples:ro
+    command: --input /app/examples/basic_logs/sample_logs.jsonl
+    restart: "no"
+
+  # Development version with mounted source code
+  adapt-rca-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: adapt-rca:dev
+    container_name: adapt-rca-dev
+    environment:
+      - ADAPT_RCA_LLM_PROVIDER=${ADAPT_RCA_LLM_PROVIDER:-none}
+      - ADAPT_RCA_LLM_MODEL=${ADAPT_RCA_LLM_MODEL:-}
+      - ADAPT_RCA_MAX_EVENTS=${ADAPT_RCA_MAX_EVENTS:-5000}
+      - ADAPT_RCA_TIME_WINDOW=${ADAPT_RCA_TIME_WINDOW:-15}
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ./src:/app/src
+      - ./data:/data
+      - ./examples:/app/examples:ro
+    command: --input /app/examples/basic_logs/sample_logs.jsonl --verbose
+    restart: "no"
+    profiles:
+      - dev

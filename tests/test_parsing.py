@@ -70,6 +70,6 @@ def test_normalize_event_missing_fields():
 def test_normalize_event_empty_raises_error():
     """Test that completely empty event raises ValidationError."""
     raw = {}
-    
+
     with pytest.raises(ValidationError):
         normalize_event(raw)

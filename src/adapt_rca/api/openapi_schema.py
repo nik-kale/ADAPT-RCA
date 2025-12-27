@@ -318,7 +318,7 @@ OPENAPI_SCHEMA = {
 def get_openapi_schema() -> dict:
     """
     Get the OpenAPI schema.
-    
+
     Returns:
         OpenAPI schema dictionary (deep copy)
     """

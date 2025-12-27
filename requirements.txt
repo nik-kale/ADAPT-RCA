@@ -1,14 +1,31 @@
 # Core dependencies
-# (Minimal for now - extend as you add LLM integrations, graph libraries, etc.)
+pydantic>=2.0.0
+python-dateutil>=2.8.0
 
-# Development dependencies
-pytest>=7.0.0
-pytest-cov>=4.0.0
+# Configuration file support
+pyyaml>=6.0  # For YAML config files
+tomli>=2.0.0; python_version < '3.11'  # For TOML config files (built-in for Python 3.11+)
 
-# Future dependencies (uncomment as needed):
-# openai>=1.0.0
-# anthropic>=0.8.0
+# Security dependencies
+passlib>=1.7.4  # For password hashing (Argon2)
+argon2-cffi>=21.0.0  # Argon2 backend for passlib
+
+# V2.0: Alerting dependencies (optional)
+# requests>=2.31.0  # For Slack and webhook notifiers
+
+# Optional dependencies (uncomment as needed):
+# Flask security (for web dashboard)
+# flask-wtf>=1.2.0  # CSRF protection
+# flask-limiter>=3.5.0  # Rate limiting
+
+# Retry logic
+# tenacity>=8.2.0  # Exponential backoff for LLM retries
+
+# LLM providers
+# openai>=1.0.0  # For OpenAI LLM integration
+# anthropic>=0.8.0  # For Anthropic LLM integration
+
+# Graph and data processing
 # networkx>=3.0  # For graph operations
 # pandas>=2.0.0  # For data analysis
-# numpy>=1.24.0
-# pydantic>=2.0.0  # For data validation
+# numpy>=1.24.0  # For numerical operations

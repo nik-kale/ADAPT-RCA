@@ -1,0 +1,13 @@
+{"timestamp": "2025-11-16T10:00:00Z", "service": "payment-service", "level": "ERROR", "message": "Failed to acquire database lock for transaction tx_12345"}
+{"timestamp": "2025-11-16T10:00:02Z", "service": "order-service", "level": "ERROR", "message": "Payment processing timeout - payment-service not responding"}
+{"timestamp": "2025-11-16T10:00:05Z", "service": "inventory-service", "level": "ERROR", "message": "Cannot reserve items - order-service returned 500"}
+{"timestamp": "2025-11-16T10:00:08Z", "service": "notification-service", "level": "ERROR", "message": "Failed to send order confirmation - order-service unavailable"}
+{"timestamp": "2025-11-16T10:00:10Z", "service": "payment-service", "level": "CRITICAL", "message": "Database deadlock detected - rolling back transaction"}
+{"timestamp": "2025-11-16T10:00:12Z", "service": "api-gateway", "level": "ERROR", "message": "Health check failed for payment-service - marking as down"}
+{"timestamp": "2025-11-16T10:00:15Z", "service": "order-service", "level": "ERROR", "message": "Circuit breaker opened for payment-service after 5 consecutive failures"}
+{"timestamp": "2025-11-16T10:00:18Z", "service": "web-frontend", "level": "ERROR", "message": "Checkout flow failed - unable to process payment"}
+{"timestamp": "2025-11-16T10:00:20Z", "service": "database", "level": "WARN", "message": "High number of active connections: 95/100"}
+{"timestamp": "2025-11-16T10:00:25Z", "service": "inventory-service", "level": "ERROR", "message": "Stock reservation failed - database timeout"}
+{"timestamp": "2025-11-16T10:00:30Z", "service": "payment-service", "level": "ERROR", "message": "Failed to acquire database lock for transaction tx_12346"}
+{"timestamp": "2025-11-16T10:00:35Z", "service": "database", "level": "CRITICAL", "message": "Deadlock detected between transactions - terminating queries"}
+{"timestamp": "2025-11-16T10:00:40Z", "service": "monitoring", "level": "CRITICAL", "message": "Multiple service failures detected - incident escalated"}
